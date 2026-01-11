@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Minecraft Crafting sla</title>
+
+<style>
+@font-face {
+  font-family: 'Minecraft';
+  src: url('https://fonts.cdnfonts.com/s/17303/Minecraft-Regular.woff') format('woff');
+}
+
+* {
+  box-sizing: border-box;
+  image-rendering: pixelated;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: 'Minecraft', monospace;
+  background-image: url("https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20/assets/minecraft/textures/block/grass_block_top.png");
+  background-size: 64px 64px;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: -1;
+}
+
+h1 {
+  margin: 20px;
+  text-shadow: 2px 2px #000;
+}
+
+.panel {
+  background: #c6c6c6;
+  border: 4px solid #000;
+  box-shadow: inset -4px -4px #555, inset 4px 4px #fff;
+  padding: 12px;
+  color: #000;
+}
+
+.game {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3,64px);
+  gap: 4px;
+  padding: 8px;
+  background-image: url("https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20/assets/minecraft/textures/block/crafting_table_top.png");
+  background-size: cover;
+}
+
+.inventory {
+  display: grid;
+  grid-template-columns: repeat(4,64px);
+  gap: 4px;
+}
+
+.slot, .item {
+  width: 64px;
+  height: 64px;
+  background: #8b8b8b;
+  border: 4px solid #000;
+  box-shadow: inset -4px -4px #373737, inset 4px 4px #dcdcdc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.item.selected {
+  outline: 4px solid #fff;
+  outline-offset: -6px;
+}
+
+img {
+  width: 42px;
+  height: 42px;
+  pointer-events: none;
+}
+
+button {
+  margin-top: 8px;
+  padding: 8px 16px;
+  font-family: 'Minecraft';
+  background: #c6c6c6;
+  border: 4px solid #000;
+  box-shadow: inset -4px -4px #555, inset 4px 4px #fff;
+  cursor: pointer;
+}
+
+button:active {
+  box-shadow: inset 4px 4px #555, inset -4px -4px #fff;
+}
+
+.info {
+  text-align: center;
+  margin-bottom: 10px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>Crafting e sei la</h1>
+
+<div class="info panel">
+  <p>Objetivo:</p>
+  <img id="targetImg">
+  <p id="targetName"></p>
+  <p>Pontos: <span id="score">0</span></p>
+</div>
+
+<div class="game">
+  <div class="panel">
+    <div class="grid" id="craft"></div>
+    <button onclick="clearCraft()">Limpar Mesa</button>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:12px;margin-top:10px">
+  <span style="font-size:24px">→</span>
+  <div class="slot" id="resultSlot"></div>
+</div>
+
+
+  <div class="panel">
+    <h3>Inventário</h3>
+    <div id="inv" class="inventory"></div>
+  </div>
+</div>
+
+<script>
+/* ================= CONFIG ================= */
+const BASE = 'https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20/assets/minecraft/textures/';
+const LOCAL_IMG = './img/'; // ✅ pasta local
+
+const I = n => BASE + 'item/' + n + '.png';
+const B = n => BASE + 'block/' + n + '.png';
+const E = n => BASE + 'entity/chest/' + n + '.png';
+
+function imageFallback(img) {
+  const key = img.dataset.item;
+  if (!key) return;
+
+  if (!img.dataset.triedLocal) {
+    img.dataset.triedLocal = '1';
+    img.src = LOCAL_IMG + key + '.png';
+  } else {
+    img.src = BASE + 'item/barrier.png';
+  }
+}
+
+/* ================= ITENS ================= */
+const items = {
+  plank: B('oak_planks'),
+  log: B('oak_log'),
+  stick: I('stick'),
+  cobble: B('cobblestone'),
+  stone: B('stone'),
+  glass: B('glass'),
+  wool: B('white_wool'),
+  coal: I('coal'),
+  diamond: I('diamond'),
+  gold_ingot: I('gold_ingot'),
+  iron_ingot: I('iron_ingot'),
+  redstone: I('redstone'),
+  quartz: I('quartz'),
+  string: I('string'),
+  leather: I('leather'),
+  torch: I('torch'),
+
+  crafting_table: B('crafting_table_top'),
+  furnace: B('furnace_front'),
+  chest: E('normal'),
+
+  ladder: I('ladder'),
+  bookshelf: B('bookshelf'),
+  stone_pickaxe: I('stone_pickaxe'),
+  iron_pickaxe: I('iron_pickaxe'),
+  diamond_pickaxe: I('diamond_pickaxe'),
+  gold_pickaxe: I('golden_pickaxe'),
+
+  piston: B('piston'),
+  iron_block: B('iron_block'),
+  gold_block: B('gold_block'),
+  diamond_block: B('diamond_block'),
+  glass_pane: I('glass_pane'),
+  white_carpet: I('white_carpet')
+};
+
+/* ================= RECEITAS ================= */
+const recipes = [
+  { result:'plank', pattern:[['log']] },
+  { result:'stick', pattern:[['plank'],['plank']] },
+  { result:'crafting_table', pattern:[['plank','plank'],['plank','plank']] },
+  { result:'chest', pattern:[['plank','plank','plank'],['plank',null,'plank'],['plank','plank','plank']] },
+  { result:'furnace', pattern:[['cobble','cobble','cobble'],['cobble',null,'cobble'],['cobble','cobble','cobble']] },
+
+  { result:'stone_pickaxe', pattern:[['cobble','cobble','cobble'],[null,'stick',null],[null,'stick',null]] },
+  { result:'iron_pickaxe', pattern:[['iron_ingot','iron_ingot','iron_ingot'],[null,'stick',null],[null,'stick',null]] },
+  { result:'gold_pickaxe', pattern:[['gold_ingot','gold_ingot','gold_ingot'],[null,'stick',null],[null,'stick',null]] },
+  { result:'diamond_pickaxe', pattern:[['diamond','diamond','diamond'],[null,'stick',null],[null,'stick',null]] },
+
+  { result:'piston', pattern:[['plank','plank','plank'],['cobble','iron_ingot','cobble'],['cobble','redstone','cobble']] },
+
+  { result:'iron_block', pattern:[['iron_ingot','iron_ingot','iron_ingot'],['iron_ingot','iron_ingot','iron_ingot'],['iron_ingot','iron_ingot','iron_ingot']] },
+  { result:'gold_block', pattern:[['gold_ingot','gold_ingot','gold_ingot'],['gold_ingot','gold_ingot','gold_ingot'],['gold_ingot','gold_ingot','gold_ingot']] },
+  { result:'diamond_block', pattern:[['diamond','diamond','diamond'],['diamond','diamond','diamond'],['diamond','diamond','diamond']] },
+
+  { result:'glass_pane', pattern:[['glass','glass','glass'],['glass','glass','glass']] },
+  { result:'white_carpet', pattern:[['wool','wool']] },
+  { result:'ladder', pattern:[['stick',null,'stick'],['stick','stick','stick'],['stick',null,'stick']] },
+  { result:'bookshelf', pattern:[['plank','plank','plank'],['leather','leather','leather'],['plank','plank','plank']] },
+
+  { result:'torch', pattern:[['coal'],['stick']] }
+];
+
+let grid = Array(9).fill(null);
+let selected = null;
+let target = null;
+let score = 0;
+let pendingRecipe = null;
+let lastCrafted = null;
+let recentCrafts = [];
+
+const COOLDOWN = 3; 
+const resultSlot = document.getElementById('resultSlot');
+
+
+const craftDiv = document.getElementById('craft');
+const invDiv = document.getElementById('inv');
+const targetImg = document.getElementById('targetImg');
+const targetName = document.getElementById('targetName');
+const scoreEl = document.getElementById('score');
+
+const ingredientesUsados = new Set();
+
+recipes.forEach(r => {
+  r.pattern.forEach(linha => {
+    linha.forEach(item => {
+      if (item) ingredientesUsados.add(item);
+    });
+  });
+});
+
+ingredientesUsados.forEach(k => {
+  if (!items[k]) return;
+
+  const d = document.createElement('div');
+  d.className = 'item';
+  d.innerHTML = `<img src="${items[k]}" data-item="${k}" onerror="imageFallback(this)">`;
+
+  d.onclick = () => {
+    document.querySelectorAll('.item').forEach(i => i.classList.remove('selected'));
+    d.classList.add('selected');
+    selected = k;
+  };
+
+  invDiv.appendChild(d);
+});
+
+
+for(let i=0;i<9;i++){
+  const s=document.createElement('div');
+  s.className='slot';
+  s.onclick=()=>{
+    grid[i]=selected;
+    render();
+    check();
+  };
+  craftDiv.appendChild(s);
+}
+
+function render(){
+  [...craftDiv.children].forEach((s,i)=>{
+    s.innerHTML = grid[i]
+      ? `<img src="${items[grid[i]]}" data-item="${grid[i]}" onerror="imageFallback(this)">`
+      : '';
+  });
+}
+
+function normalize(){
+  const m=[grid.slice(0,3),grid.slice(3,6),grid.slice(6,9)];
+  const rows=m.filter(r=>r.some(c=>c));
+  if(!rows.length) return [];
+  const cols=[0,1,2].filter(c=>rows.some(r=>r[c]));
+  return rows.map(r=>cols.map(c=>r[c]||null));
+}
+
+function match(a,b){
+  if(a.length!==b.length||a[0].length!==b[0].length) return false;
+  for(let y=0;y<b.length;y++)
+    for(let x=0;x<b[0].length;x++)
+      if(a[y][x]!==b[y][x]) return false;
+  return true;
+}
+
+function check(){
+  const n = normalize();
+  pendingRecipe = null;
+  resultSlot.innerHTML = '';
+
+  for(const r of recipes){
+    if(match(n, r.pattern)){
+      pendingRecipe = r;
+
+      resultSlot.innerHTML = `
+        <img src="${items[r.result]}"
+             data-item="${r.result}"
+             onerror="imageFallback(this)"
+             style="cursor:pointer">
+      `;
+
+      resultSlot.onclick = craftResult;
+      break;
+    }
+  }
+}
+
+function craftResult(){
+  if(!pendingRecipe) return;
+
+  score += 10;
+  scoreEl.textContent = score;
+
+  lastCrafted = pendingRecipe.result;
+  recentCrafts.push(lastCrafted);
+
+  if(recentCrafts.length > COOLDOWN){
+    recentCrafts.shift();
+  }
+
+  clearCraft();
+  resultSlot.innerHTML = '';
+  pendingRecipe = null;
+
+  next();
+}
+
+
+
+function clearCraft(){
+  grid.fill(null);
+  render();
+  resultSlot.innerHTML = '';
+  pendingRecipe = null;
+}
+
+
+function next(){
+
+  let pool = recipes.filter(r =>
+    r.result !== lastCrafted &&
+    !recentCrafts.includes(r.result)
+  );
+
+  if(pool.length === 0){
+    pool = recipes.filter(r => r.result !== lastCrafted);
+  }
+
+  if(pool.length === 0){
+    pool = recipes;
+  }
+
+  target = pool[Math.floor(Math.random() * pool.length)];
+
+  // 🔽 SEU CÓDIGO ORIGINAL (INTACTO)
+  targetImg.src = items[target.result];
+  targetImg.dataset.item = target.result; // ✅
+  targetImg.onerror = () => imageFallback(targetImg);
+  targetName.textContent = target.result.replaceAll('_',' ').toUpperCase();
+}
+
+
+next();
+</script>
+
+</body>
+</html>
