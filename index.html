@@ -111,19 +111,158 @@ button:active {
   text-align: center;
   margin-bottom: 10px;
 }
+.skill-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.skill-overlay.hidden {
+  display: none;
+}
+
+.skill-menu {
+  width: 320px;
+  text-align: center;
+}
+
+.skills {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.skills button {
+  font-size: 16px;
+}
+
+.info.panel {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.info.panel p {
+  margin: 0;
+  white-space: nowrap;
+}
+
+#targetImg {
+  width: 42px;
+  height: 42px;
+}
+
+.zoom-box {
+  width: 128px;
+  height: 128px;
+  overflow: hidden;
+  margin: auto;
+  border: 4px solid #000;
+  background: #8b8b8b;
+}
+
+.zoom-box img {
+  width: 512px;
+  height: 512px;
+  image-rendering: pixelated;
+}
+
+#guessInput {
+  margin-top: 10px;
+  padding: 6px;
+  width: 90%;
+  font-family: 'Minecraft';
+}
+
+.suggestions {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+}
+
+.suggestions div {
+  background: #c6c6c6;
+  border: 2px solid #000;
+  padding: 4px;
+  cursor: pointer;
+}
+
+.suggestions div:hover {
+  background: #a0a0a0;
+}
+
+.zoom-box.success {
+  animation: flash 0.4s ease;
+}
+
+@keyframes flash {
+  0%   { box-shadow: 0 0 0 4px #0f0; }
+  50%  { box-shadow: 0 0 12px 6px #0f0; }
+  100% { box-shadow: 0 0 0 4px #000; }
+}
+
+
 </style>
 </head>
 
 <body>
+<div id="skillOverlay" class="skill-overlay hidden">
+  <div class="skill-menu panel">
+    <h2>Escolha uma habilidade</h2>
+
+    <div class="skills">
+      <button onclick="pickSkill('life')">❤️ +1 Vida</button>
+      <button onclick="pickSkill('time')">⏳ +Tempo</button>
+      <button onclick="pickSkill('skip')">⏭️ Pular Crafting</button>
+    </div>
+  </div>
+</div>
+
 
 <h1>Crafting e sei la</h1>
+
+<div class="panel" style="margin-bottom:10px">
+  <button onclick="setMode('craft')">Modo Crafting</button>
+  <button onclick="setMode('guess')">Modo Adivinhação</button>
+  <button onclick="setMode('image')">Modo Imagem</button>
+
+</div>
+
 
 <div class="info panel">
   <p>Objetivo:</p>
   <img id="targetImg">
   <p id="targetName"></p>
   <p>Pontos: <span id="score">0</span></p>
+  <p>Vidas: <span id="lives">❤ ❤ ❤</span></p>
+<p>Tempo: <span id="timer">20</span>s</p>
+
+<p>Pulos: <span id="skips">0</span></p>
+<button onclick="useSkip()">Pular crafting</button>
+
+
 </div>
+<div id="imageMode" class="panel" style="display:none;text-align:center">
+  <div class="zoom-box">
+    <img id="zoomImg">
+  </div>
+
+  <input
+    id="guessInput"
+    type="text"
+    placeholder="Digite o nome do item..."
+    autocomplete="off"
+  >
+
+  <div id="suggestions" class="suggestions"></div>
+</div>
+
 
 <div class="game">
   <div class="panel">
@@ -144,13 +283,132 @@ button:active {
 </div>
 
 <script>
-/* ================= CONFIG ================= */
+
+
+/*  CONFIG  */
 const BASE = 'https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20/assets/minecraft/textures/';
 const LOCAL_IMG = './img/'; // ✅ pasta local
 
 const I = n => BASE + 'item/' + n + '.png';
 const B = n => BASE + 'block/' + n + '.png';
 const E = n => BASE + 'entity/chest/' + n + '.png';
+
+const livesEl = document.getElementById('lives');
+const timerEl = document.getElementById('timer');
+
+const skipsEl = document.getElementById('skips');
+
+function updateSkipUI() {
+  skipsEl.textContent = skips;
+}
+
+
+function updateLives() {
+  livesEl.textContent = '❤ '.repeat(lives).trim();
+}
+
+function startTimer() {
+  if (gameMode === 'image') return;
+
+  clearInterval(timerInterval);
+
+  const difficultyReduction = Math.floor(score / 10);
+
+  const maxTime =
+    baseTime +
+    timeBonusPermanent -
+    difficultyReduction;
+
+  timeLeft = Math.max(minTime, maxTime);
+
+  timerEl.textContent = timeLeft;
+
+  timerInterval = setInterval(() => {
+    timeLeft--;
+    timerEl.textContent = timeLeft;
+
+    if (timeLeft <= 0) {
+      clearInterval(timerInterval);
+      loseLife();
+    }
+  }, 1000);
+}
+
+
+
+function useSkip() {
+  if (skips <= 0) return;
+
+  skips--;
+  updateSkipUI();
+
+  clearInterval(timerInterval);
+  next();
+  startTimer();
+}
+
+
+function checkSkills() {
+  const expected = Math.floor(score / 100);
+
+  if (expected > skillPoints) {
+    skillPoints = expected;
+    openSkillMenu();
+  }
+}
+
+function openSkillMenu() {
+  clearInterval(timerInterval);
+  document.getElementById('skillOverlay').classList.remove('hidden');
+}
+
+function pickSkill(type) {
+  const overlay = document.getElementById('skillOverlay');
+  overlay.classList.add('hidden');
+
+  if (type === 'life') {
+    if (lives < 3) lives++;
+    updateLives();
+  }
+
+  if (type === 'time') {
+  const bonus = Math.floor(Math.random() * 11) + 20;
+  timeBonusPermanent += bonus;
+}
+
+
+  if (type === 'skip') {
+    skips++;
+    updateSkipUI();
+  }
+
+  startTimer();
+}
+
+
+
+function loseLife() {
+  lives--;
+  updateLives();
+
+  if (lives <= 0) {
+    gameOver();
+    return;
+  }
+
+  next();
+
+  if (gameMode !== 'image') {
+    startTimer();
+  }
+}
+
+
+function gameOver() {
+  alert("GAME OVER 💀\nPontuação: " + score);
+  location.reload();
+}
+
 
 function imageFallback(img) {
   const key = img.dataset.item;
@@ -164,7 +422,7 @@ function imageFallback(img) {
   }
 }
 
-/* ================= ITENS ================= */
+/*  ITENS  */
 const items = {
   plank: B('oak_planks'),
   log: B('oak_log'),
@@ -202,8 +460,8 @@ const items = {
   white_carpet: I('white_carpet')
 };
 
-/* ================= RECEITAS ================= */
-const recipes = [
+/*  RECEITAS  */
+ const recipes = [
   { result:'plank', pattern:[['log']] },
   { result:'stick', pattern:[['plank'],['plank']] },
   { result:'crafting_table', pattern:[['plank','plank'],['plank','plank']] },
@@ -229,13 +487,27 @@ const recipes = [
   { result:'torch', pattern:[['coal'],['stick']] }
 ];
 
+let baseTime = 20;
+let minTime = 4;
+let skillPoints = 0;
+let skips = 0;
 let grid = Array(9).fill(null);
+let gameMode = 'craft';
 let selected = null;
 let target = null;
 let score = 0;
+let lives = 3;
+let timeLeft = 10;
+let timerInterval = null;
 let pendingRecipe = null;
 let lastCrafted = null;
 let recentCrafts = [];
+let timeBonusPermanent = 0;
+let imageTarget = null;
+let imageZoom = 512;
+let imageOffset = { x: 0, y: 0 };
+
+
 
 const COOLDOWN = 3; 
 const resultSlot = document.getElementById('resultSlot');
@@ -248,6 +520,27 @@ const targetName = document.getElementById('targetName');
 const scoreEl = document.getElementById('score');
 
 const ingredientesUsados = new Set();
+
+const guessInput = document.getElementById('guessInput');
+const suggestions = document.getElementById('suggestions');
+
+guessInput.addEventListener('input', () => {
+  const value = guessInput.value.toLowerCase();
+  suggestions.innerHTML = '';
+
+  if (!value) return;
+
+  Object.keys(items)
+    .filter(k => k.replaceAll('_',' ').includes(value))
+    .slice(0, 6)
+    .forEach(k => {
+      const div = document.createElement('div');
+      div.textContent = k.replaceAll('_',' ');
+      div.onclick = () => selectGuess(k);
+      suggestions.appendChild(div);
+    });
+});
+
 
 recipes.forEach(r => {
   r.pattern.forEach(linha => {
@@ -277,13 +570,163 @@ ingredientesUsados.forEach(k => {
 for(let i=0;i<9;i++){
   const s=document.createElement('div');
   s.className='slot';
-  s.onclick=()=>{
-    grid[i]=selected;
-    render();
-    check();
-  };
+  s.onclick = ()=>{
+  if (gameMode === 'guess') return;
+
+  grid[i] = selected;
+  render();
+  check();
+};
+
   craftDiv.appendChild(s);
 }
+
+function buildInventory(){
+  invDiv.innerHTML = '';
+  selected = null;
+
+  let list = [];
+
+  if (gameMode === 'craft') {
+    // ingredientes (modo normal)
+    list = [...ingredientesUsados];
+  } else {
+    // resultados (modo adivinhação)
+    list = [...new Set(recipes.map(r => r.result))];
+  }
+
+  list.forEach(k => {
+    if (!items[k]) return;
+
+    const d = document.createElement('div');
+    d.className = 'item';
+    d.innerHTML = `<img src="${items[k]}" data-item="${k}" onerror="imageFallback(this)">`;
+
+    d.onclick = () => {
+      document.querySelectorAll('.item').forEach(i => i.classList.remove('selected'));
+      d.classList.add('selected');
+      selected = k;
+
+      // no modo adivinhação, clicar pode dar erro e etc
+      if (gameMode === 'guess') {
+        guessResult(k);
+      }
+    };
+
+    invDiv.appendChild(d);
+  });
+}
+
+
+function setMode(mode){
+  gameMode = mode;
+
+  document.getElementById('imageMode').style.display =
+    mode === 'image' ? 'block' : 'none';
+
+  craftDiv.style.display =
+    mode === 'image' ? 'none' : 'grid';
+
+  invDiv.style.display =
+    mode === 'image' ? 'none' : 'grid';
+
+  score = 0;
+  lives = 3;
+  updateLives();
+  scoreEl.textContent = score;
+
+  clearInterval(timerInterval);
+  clearCraft();
+
+  buildInventory();
+
+  next();
+
+  if (mode !== 'image') {
+    startTimer();
+  } else {
+    timerEl.textContent = '—';
+  }
+}
+
+
+function showImageSuccess() {
+  const box = document.querySelector('.zoom-box');
+  box.classList.add('success');
+
+  setTimeout(() => {
+    box.classList.remove('success');
+  }, 400);
+}
+
+
+function selectGuess(choice) {
+  const img = document.getElementById('zoomImg');
+
+  if (choice === imageTarget) {
+    // ACERTOU 🎉
+    score += 10;
+    scoreEl.textContent = score;
+    checkSkills();
+    showImageSuccess();
+
+    clearInterval(timerInterval);
+    setTimeout(() => {
+      nextImageRound();
+    }, 600);
+
+  } else {
+  // ERROU
+
+  lives--;
+  updateLives();
+
+  if (lives <= 0) {
+    gameOver();
+    return;
+  }
+
+ imageZoom = Math.max(96, imageZoom - 128);
+
+
+  img.style.width = imageZoom + 'px';
+  img.style.height = imageZoom + 'px';
+  img.style.transform =
+    `translate(-${imageOffset.x}px, -${imageOffset.y}px)`;
+}
+
+}
+
+
+
+function nextImageRound() {
+
+  lives = 3;
+  updateLives();
+
+  const keys = Object.keys(items);
+  imageTarget = keys[Math.floor(Math.random() * keys.length)];
+
+  const img = document.getElementById('zoomImg');
+  img.src = items[imageTarget];
+  img.dataset.item = imageTarget;
+  img.onerror = () => imageFallback(img);
+
+  imageZoom = 512;
+
+  imageOffset.x = Math.floor(Math.random() * 384);
+  imageOffset.y = Math.floor(Math.random() * 384);
+
+  img.style.width = imageZoom + 'px';
+  img.style.height = imageZoom + 'px';
+  img.style.transform =
+    `translate(-${imageOffset.x}px, -${imageOffset.y}px)`;
+
+  document.getElementById('guessInput').value = '';
+  document.getElementById('suggestions').innerHTML = '';
+}
+
+
 
 function render(){
   [...craftDiv.children].forEach((s,i)=>{
@@ -332,25 +775,74 @@ function check(){
 }
 
 function craftResult(){
-  if(!pendingRecipe) return;
+  // nao faz nada se não for a receita certa
+  if (!pendingRecipe) return;
 
+  // so aceita se for o item certo
+  if (pendingRecipe.result !== target.result) {
+    return;
+  }
+
+  // ganha pontos
   score += 10;
   scoreEl.textContent = score;
+  checkSkills();
 
+
+  // controle de repetição
   lastCrafted = pendingRecipe.result;
   recentCrafts.push(lastCrafted);
 
-  if(recentCrafts.length > COOLDOWN){
+  if (recentCrafts.length > COOLDOWN) {
     recentCrafts.shift();
   }
 
+  // limpa a mesa
   clearCraft();
   resultSlot.innerHTML = '';
   pendingRecipe = null;
 
+  // reinicia o timer e passa para o próximo
+  clearInterval(timerInterval);
   next();
+
+if (gameMode !== 'image') {
+  startTimer();
+} else {
+  clearInterval(timerInterval);
+  timerEl.textContent = '—';
 }
 
+}
+
+function guessResult(choice){
+  if (!target) return;
+
+  if (choice === target.result) {
+    // acertou
+    score += 10;
+    scoreEl.textContent = score;
+    checkSkills();
+
+
+    clearInterval(timerInterval);
+    next();
+    startTimer();
+  } else {
+    // errou
+    loseLife();
+  }
+}
+
+function updateObjectiveUI() {
+  if (gameMode === 'guess') {
+    targetImg.style.display = 'none';
+    targetName.style.display = 'none';
+  } else {
+    targetImg.style.display = 'block';
+    targetName.style.display = 'block';
+  }
+}
 
 
 function clearCraft(){
@@ -368,22 +860,56 @@ function next(){
     !recentCrafts.includes(r.result)
   );
 
-  if(pool.length === 0){
-    pool = recipes.filter(r => r.result !== lastCrafted);
-  }
-
-  if(pool.length === 0){
+  if (pool.length === 0) {
     pool = recipes;
   }
 
   target = pool[Math.floor(Math.random() * pool.length)];
 
-  // 🔽 SEU CÓDIGO ORIGINAL (INTACTO)
-  targetImg.src = items[target.result];
-  targetImg.dataset.item = target.result; // ✅
-  targetImg.onerror = () => imageFallback(targetImg);
-  targetName.textContent = target.result.replaceAll('_',' ').toUpperCase();
+  updateObjectiveUI();
+
+  //  MODO NORMAL 
+  if (gameMode === 'craft') {
+    targetImg.src = items[target.result];
+    targetImg.dataset.item = target.result;
+    targetImg.onerror = () => imageFallback(targetImg);
+    targetName.textContent = target.result.replaceAll('_',' ').toUpperCase();
+
+    clearCraft();
+  }
+
+  if (gameMode === 'image') {
+  nextImageRound();
 }
+
+
+  // MODO ADIVINHAÇÃO
+  if (gameMode === 'guess') {
+    clearCraft();
+
+    const p = target.pattern;
+    const h = p.length;
+    const w = p[0].length;
+
+    const startRow = Math.floor((3 - h) / 2);
+    const startCol = Math.floor((3 - w) / 2);
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const item = p[y][x];
+        if (item) {
+          const index = (startRow + y) * 3 + (startCol + x);
+          grid[index] = item;
+        }
+      }
+    }
+
+    render();
+  }
+}
+
+buildInventory();
+setMode('craft');
 
 
 next();
